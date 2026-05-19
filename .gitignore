@@ -1,0 +1,14 @@
+# Ignore configuration and secrets files
+config/secrets.py
+
+# Ignore all .env files
+.venv
+
+# Ignore downloaded documents
+data/downloads/*
+
+# Ignore logs
+data/logs/*
+
+# Ignore db_backups
+data/db_backups/*
