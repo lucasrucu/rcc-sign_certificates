@@ -51,7 +51,8 @@ def create_subsystems(raw_subsystems: list, start_id: int) -> list:
             Subsystem(
                 id=current_id,
                 external_id=ext_id,
-                status=SubsystemStatus.NOT_SIGNED,
+                rfcc_status=SubsystemStatus.NOT_SIGNED,
+                rfwcc_status=SubsystemStatus.NOT_SIGNED,
             )
         )
         current_id += 1
