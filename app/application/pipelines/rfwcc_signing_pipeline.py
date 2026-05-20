@@ -16,11 +16,13 @@ config = {
     }
 }
 
+
 def get_subsystem_disciplines(
     subsystem_id: int,
     documents: list[Document],
     doc_ss_rows: list[SubsystemDocument],
 ) -> set[int]:
+    """Get all disciplines associated with a subsystem via document links."""
     doc_ids = {
         r.id_doc
         for r in doc_ss_rows
@@ -35,64 +37,12 @@ def get_subsystem_disciplines(
     
     return disciplines
 
-def get_subsystem_disciplines1(
-    subsystem_id: int,
-    documents: list[Document],
-    doc_ss_rows: list[SubsystemDocument],
-) -> set[int]:
-    print("-" * 60)
-    print(f"🔍 Finding disciplines for subsystem {subsystem_id}")
 
-    print("\n🔗 Inspecting Subsystem–Document links (doc_ss_rows):")
-    matched_rows = []
-    
-    counter = 0
-
-    for r in doc_ss_rows:
-        counter += 1
-        print(
-            f"  SS_LINK → id_ss={r.id_ss!r}, id_doc={r.id_doc!r} "
-            f"(type id_ss={type(r.id_ss)}, type id_doc={type(r.id_doc)})"
-        )
-        if r.id_ss == subsystem_id:
-            print("    ✅ MATCHED subsystem")
-            matched_rows.append(r)
-        else:
-            print("    ❌ not this subsystem")
-        if counter >= 10:
-            print("⏸ Reached 10 rows, pausing for review...")
-            input("Press Enter to continue...")
-            counter = 0    
-        
-
-    doc_ids = {r.id_doc for r in matched_rows}
-    print(f"\n📄 Collected document IDs for subsystem: {doc_ids}")
-
-    print("\n📚 Inspecting Documents:")
-    disciplines = set()
-
-    for d in documents:
-        print(
-            f"  DOC → id={d.id!r}, external_id={d.external_id!r}, "
-            f"discipline={d.disc!r}"
-        )
-
-        if d.id in doc_ids:
-            print("    ✅ Document linked to subsystem")
-            if d.disc and d.disc != DocumentDiscipline.NO_DISC:
-                disciplines.add(d.disc)
-                print(f"      ➕ Added discipline: {d.disc}")
-            else:
-                print("      ⚠ Document has NO_DISC or empty discipline")
-        else:
-            print("    ❌ Document not linked")
-
-    print(f"\n✅ FINAL disciplines set: {disciplines}")
-    input("⏸ DEBUG PAUSE – Press Enter to continue...")
-
-    return disciplines
-
-async def run_rfcc_signing_pipeline():
+async def run_rfwcc_signing_pipeline():
+    """
+    Sign RFWCC certificates for subsystems marked with rfwcc_status=NOT_SIGNED.
+    Similar to RFCC pipeline but uses sign_rfwcc_for_subsystem.
+    """
     ss_rows = load_subsystems()
     doc_rows = load_documents()
     ss_doc_rows = load_subsystem_document_links()
@@ -102,24 +52,24 @@ async def run_rfcc_signing_pipeline():
     
     not_uploaded = [
         s for s in all_subsystems
-        if s.rfcc_status == SubsystemStatus.NOT_UPLOADED
+        if s.rfwcc_status == SubsystemStatus.NOT_UPLOADED
     ]
 
     to_sign = [
         s for s in all_subsystems
-        if s.rfcc_status == SubsystemStatus.NOT_SIGNED
+        if s.rfwcc_status == SubsystemStatus.NOT_SIGNED
     ]
 
     # --------------------------------------------------
     # Inform user BEFORE signing
     # --------------------------------------------------
     if not_uploaded:
-        print("\n=== Subsystems NOT UPLOADED (will be skipped) ===")
+        print("\n=== Subsystems NOT UPLOADED for RFWCC (will be skipped) ===")
     for s in not_uploaded:
         print(f" - {s.external_id}")
 
     if not to_sign:
-        print("\n✅ No subsystems pending RFCC signing.")
+        print("\n✅ No subsystems pending RFWCC signing.")
         return
 
     async with PIMSClient(
@@ -145,29 +95,35 @@ async def run_rfcc_signing_pipeline():
                 if not disciplines:
                     print(
                         f"⚠ No disciplines found for {subsystem.external_id}, "
-                        f"skipping signing."
+                        f"continuing RFWCC signing with NA check items."
                     )
-                    continue
                 
-                result = await client.sign_rfcc_for_subsystem(
+                result = await client.sign_rfwcc_for_subsystem(
                     subsystem_external_id=subsystem.external_id,
                     disciplines=disciplines,
                 )
 
                 if result == "SIGNED":
-                    subsystem.rfcc_status = SubsystemStatus.SIGNED
-                    print(f"✅ RFCC signed: {subsystem.external_id}")
+                    subsystem.rfwcc_status = SubsystemStatus.SIGNED
+                    print(f"✅ RFWCC signed: {subsystem.external_id}")
+
+                elif result == "PARTIAL":
+                    subsystem.rfwcc_status = SubsystemStatus.PARTIALLY_SIGNED
+                    print(
+                        f"⚠ RFWCC initial signing completed for {subsystem.external_id}, "
+                        f"marked PARTIALLY_SIGNED"
+                    )
 
                 elif result == "NOT_FOUND":
-                    subsystem.rfcc_status = SubsystemStatus.NOT_UPLOADED
+                    subsystem.rfwcc_status = SubsystemStatus.NOT_UPLOADED
                     print(
-                        f"⚠ Subsystem not found, marked NOT_UPLOADED: "
+                        f"⚠ Subsystem not found for RFWCC, marked NOT_UPLOADED: "
                         f"{subsystem.external_id}"
                     )
 
             except Exception as e:
                 print(
-                    f"❌ Error signing {subsystem.external_id}: {e}"
+                    f"❌ Error signing RFWCC for {subsystem.external_id}: {e}"
                 )
 
             finally:
@@ -179,5 +135,4 @@ async def run_rfcc_signing_pipeline():
         if batch_counter > 0:
             write_subsystems(all_subsystems)
 
-
-    print("\n✅ RFCC signing pipeline completed.")
+    print("\n✅ RFWCC signing pipeline completed.")

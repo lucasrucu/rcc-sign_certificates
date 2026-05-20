@@ -26,8 +26,17 @@ This file instructs Copilot-style assistants (and human contributors) how this r
 
 - Use `main.py` as the single canonical launcher for programmatic runs (CLI) and for the new GUI launcher.
 - High-level flows live under `app/application/orchestrations/` and should expose a single async function (e.g. `async def run_full_pims_flow(...)`).
+- Pipeline flows include:
+  - **RFCC:** CSV import → sign certificates via PIMS (dossier, check items, signatures)
+  - **RFWCC:** Excel import (one column) → sign certificates via PIMS (identical to RFCC workflow)
 
-## Coding conventions
+## Database schema
+
+- **Subsystems table** (columns: id, external_id, rfcc_status, rfwcc_status):
+  - `rfcc_status`: tracks RFCC certificate signing state (NOT_UPLOADED, NOT_SIGNED, SIGNED)
+  - `rfwcc_status`: tracks RFWCC certificate signing state (same enum values)
+  - Status is per-certificate to allow independent workflows
+- **Documents and Subsystem-Document links:** unchanged; provide discipline mappings for both certificates
 
 - Python 3.11+ typing features are allowed (e.g. `tuple[Path, Optional[str]]`).
 - Use `black` for formatting, `isort` for imports, and `ruff`/`flake8` for linting.
@@ -83,6 +92,19 @@ When asked to modify code, follow these rules:
 ## Maintenance
 
 - If new long-running integrations are added (e.g., new Playwright flows), add documentation under `app/application/orchestrations/README.md` describing entrypoints and required config.
+
+## RFWCC (New Certificate) Support
+
+Since v2 dual-certificate update:
+
+- Both RFCC and RFWCC use identical signing workflows (dossier, check items, signatures).
+- Each subsystem can have independent RFCC and RFWCC statuses.
+- **Import difference:** RFCC imports from CSV with full document data; RFWCC imports from Excel (one column of subsystem IDs).
+- **PIMSClient methods:**
+  - `sign_rfcc_for_subsystem(subsystem_external_id, disciplines)` → returns "SIGNED" | "NOT_FOUND" | "FAILED"
+  - `sign_rfwcc_for_subsystem(subsystem_external_id, disciplines)` → identical interface for RFWCC
+- **Pipeline naming:** `import_rfwcc_pipeline.py`, `rfwcc_signing_pipeline.py` parallel RFCC pipelines.
+- If UI/PIMS changes the certificate names or tab locations, update both RFCC and RFWCC methods in `PIMSClient` consistently.
 
 ## Questions
 

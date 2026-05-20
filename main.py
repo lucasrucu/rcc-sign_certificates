@@ -13,6 +13,11 @@ from app.application.pipelines.rfcc_signing_pipeline import run_rfcc_signing_pip
 from app.application.pipelines.upload_document_metadata_pipeline import run_upload_document_metadata_pipeline
 from app.application.pipelines.upload_files_pipeline import run_upload_files_pipeline
 from app.application.pipelines.upload_subsystem_document_pipeline import run_upload_subsystem_document_pipeline
+from app.application.pipelines.import_rfwcc_pipeline import run_import_rfwcc_pipeline
+from app.application.pipelines.rfwcc_signing_pipeline import run_rfwcc_signing_pipeline
+from app.application.pipelines.rfwcc_complete_final_signature_pipeline import (
+    run_rfwcc_complete_final_signature_pipeline,
+)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -84,6 +89,31 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "upload-ss-doc-m", help="Upload subsystem-document links to PIMS"
     )
 
+    # --------------------------------------------------
+    # IMPORT-RFWCC command
+    # --------------------------------------------------
+    import_rfwcc_parser = subparsers.add_parser(
+        "import-rfwcc", help="Import RFWCC document list"
+    )
+
+    import_rfwcc_parser.add_argument(
+        "--rfwcc-file",
+        type=Path,
+        required=True,
+        help="Path to RFWCC Excel file (one column with subsystem IDs)",
+    )
+
+    # --------------------------------------------------
+    # SIGN-RFWCC command
+    # --------------------------------------------------
+    rfwcc_signing_parser = subparsers.add_parser(
+        "sign-rfwcc", help="Sign RFWCC documents in PIMS"
+    )
+
+    rfwcc_final_parser = subparsers.add_parser(
+        "sign-rfwcc-final", help="Complete final RFWCC signature step in PIMS"
+    )
+
     return parser
 
 
@@ -110,6 +140,15 @@ def _dispatch_cli(args: argparse.Namespace) -> None:
     elif args.command == "upload-ss-doc-m":
         asyncio.run(run_upload_subsystem_document_pipeline())
 
+    elif args.command == "import-rfwcc":
+        asyncio.run(run_import_rfwcc_pipeline(rfwcc_file=args.rfwcc_file))
+
+    elif args.command == "sign-rfwcc":
+        asyncio.run(run_rfwcc_signing_pipeline())
+
+    elif args.command == "sign-rfwcc-final":
+        asyncio.run(run_rfwcc_complete_final_signature_pipeline())
+
 
 def launch_gui() -> None:
     """Simple Tkinter launcher that exposes the existing flows as buttons.
@@ -134,6 +173,9 @@ def launch_gui() -> None:
 
     frame = tk.Frame(root)
     frame.pack(fill=tk.X, padx=10, pady=10)
+
+    frame_rfwcc = tk.Frame(root)
+    frame_rfwcc.pack(fill=tk.X, padx=10, pady=5)
 
     text = scrolledtext.ScrolledText(root, state=tk.DISABLED, wrap=tk.WORD)
     text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0,10))
@@ -221,6 +263,19 @@ def launch_gui() -> None:
     btn_upload_ss = tk.Button(frame, text="Upload subsystem-doc", width=18,
                               command=lambda: pick_none_and_run(run_upload_subsystem_document_pipeline))
     btn_upload_ss.pack(side=tk.LEFT, padx=5)
+
+    # RFWCC buttons (second row)
+    btn_import_rfwcc = tk.Button(frame_rfwcc, text="Import RFWCC (requires Excel)", width=28,
+                                command=lambda: pick_file_and_run(run_import_rfwcc_pipeline))
+    btn_import_rfwcc.pack(side=tk.LEFT, padx=5)
+
+    btn_sign_rfwcc = tk.Button(frame_rfwcc, text="Sign RFWCC", width=12,
+                              command=lambda: pick_none_and_run(run_rfwcc_signing_pipeline))
+    btn_sign_rfwcc.pack(side=tk.LEFT, padx=5)
+
+    btn_sign_rfwcc_final = tk.Button(frame_rfwcc, text="Finish RFWCC", width=12,
+                                     command=lambda: pick_none_and_run(run_rfwcc_complete_final_signature_pipeline))
+    btn_sign_rfwcc_final.pack(side=tk.LEFT, padx=5)
 
     root.mainloop()
 

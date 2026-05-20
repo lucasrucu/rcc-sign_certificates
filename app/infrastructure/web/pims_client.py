@@ -254,7 +254,7 @@ class PIMSClient:
         await page.wait_for_timeout(extra_wait)
 
         rows = page.get_by_role("row")
-        if await rows.count() != 5:
+        if await rows.count() != 6:
             return "NOT_FOUND"
 
         # ───────────────────────────────────────────────────────────
@@ -440,5 +440,335 @@ class PIMSClient:
                 return "SIGNED"
 
         await rfcc_page.close()
+        return "FAILED"
+
+    async def sign_rfwcc_for_subsystem(
+        self,
+        subsystem_external_id: str,
+        disciplines: set[str],
+    ) -> str:
+        """
+        Execute full RFWCC workflow for one subsystem (identical to RFCC).
+
+        Returns:
+            "SIGNED"       → RFWCC accepted
+            "NOT_FOUND"    → subsystem or RFWCC not found
+            "FAILED"       → error during process
+        """
+        
+        cfg = self.config
+        extra_wait = cfg.get("behavior", {}).get("extra_wait", 2) * 1000
+        page = self.page
+
+        # ───────────────────────────────────────────────────────────
+        # Search Subsystem
+        # ───────────────────────────────────────────────────────────
+        search_inputs = page.locator(
+            "#cmsSubSystem input[autocomplete='af-autocomplete-SubSystem']:visible"
+        )
+        if await search_inputs.count() == 0:
+            raise RuntimeError("Subsystem search input not found")
+
+        search_input = search_inputs.first
+        await search_input.click()
+        await search_input.fill("")
+        await search_input.fill(subsystem_external_id)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(extra_wait)
+
+        rows = page.get_by_role("row")
+        if await rows.count() != 6:
+            return "NOT_FOUND"
+
+        # ───────────────────────────────────────────────────────────
+        # Open RFWCC tab
+        # ───────────────────────────────────────────────────────────
+        subsystem_tab = page.locator("#cmsSubSystem")
+        rfwcc_links = subsystem_tab.get_by_role("link", name="RFWCC", exact=True)
+        if await rfwcc_links.count() == 0:
+            return "NOT_FOUND"
+
+        async with page.context.expect_page() as new_page_info:
+            await rfwcc_links.first.click(force=True, timeout=5000)
+
+        rfwcc_page = await new_page_info.value
+        await rfwcc_page.wait_for_load_state("domcontentloaded")
+        await rfwcc_page.wait_for_timeout(extra_wait)
+
+        # ───────────────────────────────────────────────────────────
+        # Already accepted?
+        # ───────────────────────────────────────────────────────────
+        accepted_badges = rfwcc_page.locator("span.badge-success").filter(has_text="Accepted")
+        for i in range(await accepted_badges.count()):
+            badge = accepted_badges.nth(i)
+            hidden = await badge.evaluate(
+                "el => el.classList.contains('hide') || "
+                "el.classList.contains('d-none') || "
+                "el.style.display === 'none'"
+            )
+            if not hidden:
+                await rfwcc_page.close()
+                return "SIGNED"
+
+        # ───────────────────────────────────────────────────────────
+        # Rev Up Certificate (if outdated)
+        # ───────────────────────────────────────────────────────────
+        warning = rfwcc_page.locator("div.alert-warning").filter(has_text="outdated")
+        if await warning.count() > 0:
+            cert_btn = rfwcc_page.locator("button.dropdown-toggle").filter(
+                has_text="Certificate"
+            ).first
+            await cert_btn.click()
+            await rfwcc_page.wait_for_timeout(600)
+
+            rev_up_cert = rfwcc_page.locator(
+                "a.dropdown-item", has_text="Rev Up Certificate"
+            )
+            rev_up_sig = rfwcc_page.locator(
+                "a.dropdown-item", has_text="Rev Up Signature"
+            )
+
+            if await rev_up_cert.count() > 0:
+                await rev_up_cert.first.click()
+            elif await rev_up_sig.count() > 0:
+                await rev_up_sig.first.click()
+            else:
+                await rfwcc_page.close()
+                return "FAILED"
+
+            await rfwcc_page.wait_for_timeout(800)
+            await rfwcc_page.locator(
+                "button.btn-primary[data-dismiss='modal']"
+            ).filter(has_text="Yes").click()
+
+            try:
+                await warning.wait_for(state="hidden", timeout=15000)
+            except Exception:
+                await rfwcc_page.wait_for_timeout(3000)
+
+            await rfwcc_page.reload(wait_until="domcontentloaded")
+            await rfwcc_page.wait_for_timeout(extra_wait)
+            
+
+        # ───────────────────────────────────────────────────────────
+        # Dossier Index
+        # ───────────────────────────────────────────────────────────
+        await rfwcc_page.locator("a#tabDossierIndex").click()
+        await rfwcc_page.wait_for_timeout(extra_wait)
+
+        row0 = rfwcc_page.locator("#dossierTable [data-list-index='0']")
+        await row0.wait_for(state="visible", timeout=10000)
+
+        exclude_btn = row0.locator("div[action='excludeFromHandover']")
+        if await exclude_btn.count() > 0:
+            visible = not await exclude_btn.evaluate(
+                "el => el.classList.contains('hide') || el.classList.contains('d-none')"
+            )
+            if visible:
+                await exclude_btn.click(force=True)
+                await rfwcc_page.wait_for_timeout(800)
+
+        # ───────────────────────────────────────────────────────────
+        # Check Items
+        # ───────────────────────────────────────────────────────────
+        normalized_disciplines = {
+            d.value.strip()
+            for d in disciplines
+            if d != DocumentDiscipline.NO_DISC
+        }
+            
+        await rfwcc_page.locator("a#tabBlockCheckItems, a[href='#blockCheckItems']").first.click()
+        await rfwcc_page.wait_for_timeout(extra_wait)
+
+        rows = rfwcc_page.locator("#checkItemsTable [data-list-index]")
+        for i in range(await rows.count()):
+            row = rows.nth(i)
+
+            item_no = (await row.locator("a[data-field='Item']").text_content() or "").strip()
+            desc = (await row.locator("div[data-field='Description']").text_content() or "").strip()
+
+            action_div = row.locator("div[data-function='getCheckItemState']").first
+            if await action_div.count() > 0:
+                hidden = await action_div.evaluate(
+                    "el => el.classList.contains('hide') || el.classList.contains('d-none')"
+                )
+                if hidden:
+                    continue
+
+            if item_no == "1.1":
+                action = "OK"
+            elif item_no.startswith("2."):
+                action = "OK" if desc in normalized_disciplines else "NA"
+            else:
+                continue
+
+            btn = row.locator(f"div.cl-action-button[action='{action}']").first
+            if await btn.count() == 0:
+                continue
+
+            already_set = not await btn.evaluate(
+                "el => el.classList.contains('not-checked')"
+            )
+            if already_set:
+                continue
+
+            await btn.click(force=True)
+            await rfwcc_page.wait_for_timeout(500)
+            
+
+        # ───────────────────────────────────────────────────────────
+        # Signatures
+        # ───────────────────────────────────────────────────────────
+        async def click_proceed():
+            proceed = rfwcc_page.locator(
+                "button[data-dismiss='modal']:visible"
+            ).filter(has_text="Proceed")
+            try:
+                await proceed.first.wait_for(state="visible", timeout=5000)
+                await proceed.first.click()
+                await rfwcc_page.wait_for_timeout(800)
+            except Exception:
+                pass
+
+        await rfwcc_page.locator("a#tabBlockSignatures").click()
+        await rfwcc_page.wait_for_timeout(extra_wait)
+
+        for step in [0, 1]:
+            btn = rfwcc_page.locator(f"button[onclick='signStep({step})']")
+            if await btn.count() > 0:
+                hidden = await btn.evaluate(
+                    "el => el.classList.contains('hidden') || el.style.display === 'none'"
+                )
+                if not hidden:
+                    await btn.click()
+                    await click_proceed()
+                    await rfwcc_page.wait_for_timeout(extra_wait)
+
+        await rfwcc_page.reload(wait_until="domcontentloaded")
+        await rfwcc_page.wait_for_timeout(2000)
+
+        # ───────────────────────────────────────────────────────────
+        # Final Accepted check
+        # ───────────────────────────────────────────────────────────
+        accepted_badges = rfwcc_page.locator("span.badge-success").filter(has_text="Accepted")
+        for i in range(await accepted_badges.count()):
+            badge = accepted_badges.nth(i)
+            hidden = await badge.evaluate(
+                "el => el.classList.contains('hide') || "
+                "el.classList.contains('d-none') || "
+                "el.style.display === 'none'"
+            )
+            if not hidden:
+                await rfwcc_page.close()
+                return "SIGNED"
+
+        # If we reach here without Accepted badges the initial signing steps
+        # completed but the certificate is not fully accepted. Return PARTIAL
+        # so higher-level pipelines can persist state and schedule the final
+        # signature step separately.
+        await rfwcc_page.close()
+        return "PARTIAL"
+
+    async def complete_rfwcc_final_signature(
+        self,
+        subsystem_external_id: str,
+    ) -> str:
+        """
+        Perform only the final signature step for an RFWCC certificate (step 2).
+
+        Returns:
+            "SIGNED"       → RFWCC accepted after final step
+            "NOT_FOUND"    → subsystem or RFWCC not found
+            "FAILED"       → error during process
+        """
+
+        cfg = self.config
+        extra_wait = cfg.get("behavior", {}).get("extra_wait", 2) * 1000
+        page = self.page
+
+        # Search Subsystem (same routine as full flow)
+        search_inputs = page.locator(
+            "#cmsSubSystem input[autocomplete='af-autocomplete-SubSystem']:visible"
+        )
+        if await search_inputs.count() == 0:
+            raise RuntimeError("Subsystem search input not found")
+
+        search_input = search_inputs.first
+        await search_input.click()
+        await search_input.fill("")
+        await search_input.fill(subsystem_external_id)
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(extra_wait)
+
+        rows = page.get_by_role("row")
+        if await rows.count() != 6:
+            return "NOT_FOUND"
+
+        # Open RFWCC tab
+        subsystem_tab = page.locator("#cmsSubSystem")
+        rfwcc_links = subsystem_tab.get_by_role("link", name="RFWCC", exact=True)
+        if await rfwcc_links.count() == 0:
+            return "NOT_FOUND"
+
+        async with page.context.expect_page() as new_page_info:
+            await rfwcc_links.first.click(force=True, timeout=5000)
+
+        rfwcc_page = await new_page_info.value
+        await rfwcc_page.wait_for_load_state("domcontentloaded")
+        await rfwcc_page.wait_for_timeout(extra_wait)
+
+        # If already accepted, nothing to do
+        accepted_badges = rfwcc_page.locator("span.badge-success").filter(has_text="Accepted")
+        for i in range(await accepted_badges.count()):
+            badge = accepted_badges.nth(i)
+            hidden = await badge.evaluate(
+                "el => el.classList.contains('hide') || "
+                "el.classList.contains('d-none') || el.style.display === 'none'"
+            )
+            if not hidden:
+                await rfwcc_page.close()
+                return "SIGNED"
+
+        # Go straight to Signatures tab and perform final step
+        await rfwcc_page.locator("a#tabBlockSignatures").click()
+        await rfwcc_page.wait_for_timeout(extra_wait)
+
+        step = 2
+        btn = rfwcc_page.locator(f"button[onclick='signStep({step})']")
+        if await btn.count() > 0:
+            hidden = await btn.evaluate(
+                "el => el.classList.contains('hidden') || el.style.display === 'none'"
+            )
+            if not hidden:
+                await btn.click()
+                async def click_proceed_local():
+                    proceed = rfwcc_page.locator(
+                        "button[data-dismiss='modal']:visible"
+                    ).filter(has_text="Proceed")
+                    try:
+                        await proceed.first.wait_for(state="visible", timeout=5000)
+                        await proceed.first.click()
+                        await rfwcc_page.wait_for_timeout(800)
+                    except Exception:
+                        pass
+
+                await click_proceed_local()
+                await rfwcc_page.wait_for_timeout(extra_wait)
+
+        await rfwcc_page.reload(wait_until="domcontentloaded")
+        await rfwcc_page.wait_for_timeout(2000)
+
+        accepted_badges = rfwcc_page.locator("span.badge-success").filter(has_text="Accepted")
+        for i in range(await accepted_badges.count()):
+            badge = accepted_badges.nth(i)
+            hidden = await badge.evaluate(
+                "el => el.classList.contains('hide') || "
+                "el.classList.contains('d-none') || el.style.display === 'none'"
+            )
+            if not hidden:
+                await rfwcc_page.close()
+                return "SIGNED"
+
+        await rfwcc_page.close()
         return "FAILED"
     

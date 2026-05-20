@@ -38,7 +38,8 @@ def write_subsystems(subsystems: list[Subsystem]) -> None:
         {
             "id": str(s.id),
             "external_id": s.external_id,
-            "status": s.status.value,
+            "rfcc_status": s.rfcc_status.value,
+            "rfwcc_status": s.rfwcc_status.value,
         }
         for s in subsystems
     ]

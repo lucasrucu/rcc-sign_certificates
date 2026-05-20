@@ -49,14 +49,7 @@ def create_documents_from_db(rows: list[dict]) -> list[Document]:
 
 
 def create_subsystems_from_db(rows: list[dict]) -> list[Subsystem]:
-    return [
-        Subsystem(
-            id=int(r["id"]),
-            external_id=r["external_id"],
-            status=SubsystemStatus(r["status"]),
-        )
-        for r in rows
-    ]
+    return [Subsystem.from_db_row(r) for r in rows]
 
 
 def create_links_from_db(rows: list[dict]) -> list[SubsystemDocument]:
