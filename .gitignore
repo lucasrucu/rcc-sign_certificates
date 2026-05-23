@@ -12,3 +12,16 @@ data/logs/*
 
 # Ignore db_backups
 data/db_backups/*
+
+# Ignore virtual environment
+venv/
+
+# Ignore repetitive files
+data/input/*
+
+# Ignore db and backups
+data/db_backups/*
+data/db/*
+
+# Ignore logs
+data/logs/*
