@@ -23,7 +23,11 @@ from app.application.pipelines.rfwcc_complete_final_signature_pipeline import (
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="RFCC Automation v2")
-    parser.add_argument("--gui", action="store_true", help="Launch GUI launcher")
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch GUI launcher and keep the process open until the window is closed",
+    )
 
     subparsers = parser.add_subparsers(dest="command")
 
@@ -341,6 +345,7 @@ def main():
     args = parser.parse_args()
 
     if getattr(args, "gui", False):
+        print("Launching GUI launcher. Close the window to return to the shell.")
         launch_gui()
         return
 

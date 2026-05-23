@@ -74,3 +74,21 @@ Infrastructure writers / automation / reports
 - Status-driven workflow
 
 Detailed rules and edge cases are added incrementally as needed.
+
+---
+
+## Run
+
+Start the command-line entry point with:
+
+```powershell
+python main.py
+```
+
+Launch the GUI launcher with:
+
+```powershell
+python main.py --gui
+```
+
+GUI mode is a normal Tkinter application, so the terminal will stay attached while the window is open. Close the window to return to the prompt.

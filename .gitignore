@@ -20,7 +20,6 @@ venv/
 data/input/*
 
 # Ignore db and backups
-data/db_backups/*
 data/db/*
 
 # Ignore logs
