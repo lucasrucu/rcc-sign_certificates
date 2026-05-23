@@ -15,7 +15,7 @@ from app.application.pipelines.upload_files_pipeline import run_upload_files_pip
 from app.application.pipelines.upload_subsystem_document_pipeline import run_upload_subsystem_document_pipeline
 from app.application.pipelines.import_rfwcc_pipeline import run_import_rfwcc_pipeline
 from app.application.pipelines.rfwcc_signing_pipeline import run_rfwcc_signing_pipeline
-from app.application.pipelines.sign_rfwcc_phase1_pipeline import run_sign_rfwfwcc_phase1_pipeline
+from app.application.pipelines.sign_rfwcc_phase1_pipeline import run_sign_rfwcc_phase1_pipeline
 from app.application.pipelines.rfwcc_complete_final_signature_pipeline import (
     run_rfwcc_complete_final_signature_pipeline,
 )
