@@ -24,3 +24,9 @@ data/db/*
 
 # Ignore logs
 data/logs/*
+
+# Ignore dist
+dist/*
+
+# Ignore build
+build/*

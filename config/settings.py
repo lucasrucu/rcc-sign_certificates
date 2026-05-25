@@ -1,10 +1,25 @@
+import os
+import sys
 from pathlib import Path
 
 # --------------------------------------------------
 # Project paths
 # --------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+def _resolve_project_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[1]
+
+
+PROJECT_ROOT = _resolve_project_root()
+
+if getattr(sys, "frozen", False):
+    os.environ.setdefault(
+        "PLAYWRIGHT_BROWSERS_PATH",
+        str(PROJECT_ROOT / "playwright-browsers"),
+    )
 
 DATA_DIR = PROJECT_ROOT / "data"
 DB_DIR = DATA_DIR / "db"

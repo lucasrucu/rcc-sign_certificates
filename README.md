@@ -79,6 +79,15 @@ Detailed rules and edge cases are added incrementally as needed.
 
 ## Run
 
+### From source (development)
+
+Install dependencies first:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+```
+
 Start the command-line entry point with:
 
 ```powershell
@@ -92,3 +101,36 @@ python main.py --gui
 ```
 
 GUI mode is a normal Tkinter application, so the terminal will stay attached while the window is open. Close the window to return to the prompt.
+
+### Standalone executable (Windows)
+
+You can build a self-contained folder that runs without a Python installation.
+
+Build the executable:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "scripts\build_executable.ps1"
+```
+
+This script:
+
+- Installs PyInstaller and project dependencies
+- Builds `dist/RFCC-Automation/RFCC-Automation.exe` using `rfcc_automation.spec`
+- Copies the `data/` folder and `config/secrets.py` into the output folder
+- Downloads Chromium into `playwright-browsers/` so browser automation works out of the box
+
+Run the built app:
+
+```powershell
+dist\RFCC-Automation\RFCC-Automation.exe --gui
+```
+
+CLI commands work the same way, for example:
+
+```powershell
+dist\RFCC-Automation\RFCC-Automation.exe download
+```
+
+To share the app with someone else, zip the entire `dist/RFCC-Automation/` folder (not just the `.exe`). The folder also contains runtime data, credentials, and the Playwright browser bundle.
+
+**Note:** `config/secrets.py` is required and is not committed to git. Create it before building, or the build will warn you and the executable will not be able to log in to Aconex/PIMS.
